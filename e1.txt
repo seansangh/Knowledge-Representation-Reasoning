@@ -1,0 +1,48 @@
+%Search Space
+{assign(Caseid,Refereeid) : referee(Refereeid, Refereetype, Max_workload, Prev_workload, Prev_payment)}= 1  :- case(Caseid, Casetype, Effort, Damage, Postc, Payment).
+
+
+%Hard Constraints
+
+%Working minutes must not exceed workload
+:- Maxwork = #sum{Effort, Refereeid, Caseid : assign(Caseid,Refereeid), case(Caseid,Casetype, Effort, Damage, Postc, Payment)}, referee(Refereeid, Refereetype, Max_workload, Prev_workload, Prev_payment), Maxwork > Max_workload.
+
+%Cases must not be assigned to referees who aren't in charge of type of case
+:- assign(Caseid, Refereeid), referee(Refereeid, Refereetype, Max_workload, Prev_workload, Prev_payment), case(Caseid, Casetype, Effort, Damage, Postc, Payment), prefType(Refereeid, Casetype, 0).
+
+%Cases must not be assigned to referees who aren't in charge of the region
+:- assign(Caseid, Refereeid), referee(Refereeid, Refereetype, Max_workload, Prev_workload, Prev_payment), case(Caseid, Casetype, Effort, Damage, Postc, Payment), prefRegion(Refereeid, Postc, 0).
+
+%Cases that exceed a certain threshold can only be assigned to internal referees
+:- assign(Caseid, Refereeid), referee(Refereeid, Refereetype, Max_workload, Prev_workload, Prev_payment), case(Caseid, Casetype, Effort, Damage, Postc, Payment), Refereetype==e , externalMaxDamage(Md), Damage > Md.
+
+
+%Weak Constraints
+
+%To minimize costs, internal referees are preferred to external referees
+internalReferee(I) :- I = #count{1 , Refereeid : assign(Caseid, Refereeid), referee(Refereeid, Refereetype, Max_workload, Prev_workload, Prev_payment), Refereetype == i}.
+#maximize{I : internalReferee(I)}.
+
+%Assignment of cases to referees should be fair (payment should be balanced)
+pay(Refereeid, Refereepay) :- Refereepay =  #sum{Payment, Refereeid, Caseid:assign(Caseid, Refereeid), case(Caseid, Casetype, Effort, Damage, Postc, Payment)}, referee(Refereeid, Refereetype, Max_workload, Prev_workload, Prev_payment), Refereetype == e.
+totalpay(Refereeid, Pm) :- Pm = Prev_payment + Refereepay, referee(Refereeid, Refereetype, Max_workload, Prev_workload, Prev_payment), pay(Refereeid , Refereepay), Refereetype == e.
+minpay(Pay1) :- totalpay(Refereeid1, Pay1), 0 == #count{1,Refereeid2 : Pay1 > Pay2, totalpay(Refereeid2, Pay2)},totalpay(Refereeid1, Pay1).
+maxpay(Pay1) :- totalpay(Refereeid1, Pay1), 0 == #count{1,Refereeid2 : Pay1 < Pay2, totalpay(Refereeid2, Pay2)},totalpay(Refereeid1, Pay1).
+paydifference(P) :- P = (MAX - MIN), maxpay(MAX), minpay(MIN).
+#minimize{P, Caseid, Refereeid : paydifference(P), assign(Caseid, Refereeid), referee(Refereeid, Refereetype, Max_workload, Prev_workload, Prev_payment), case(Caseid, Casetype, Effort, Damage, Postc, Payment)}.
+
+%The assignment of cases to referees should be fair (workload should be balanced)
+cassigned(Refereeid, Case_Work) :-  Case_Work =  #sum{Effort, Refereeid, Caseid : assign(Caseid, Refereeid), case(Caseid, Casetype, Effort, Damage, Postc, Payment)}, referee(Refereeid, Refereetype, Max_workload, Prev_workload, Prev_payment).
+workload(Refereeid, TWork) :- TWork = Prev_workload + Case_Work, referee(Refereeid, Refereetype, Max_workload, Prev_workload, Prev_payment), cassigned(Refereeid, Case_Work).
+minworkload(W1) :- workload(Refereeid1, W1), 0 == #count{1, Refereeid2 : W1 > W2, workload(Refereeid2, W2)}, workload(Refereeid1, W1).
+maxworkload(W1) :- workload(Refereeid1, W1), 0 == #count{1, Refereeid2 : W1 < W2, workload(Refereeid2, W2)}, workload(Refereeid1, W1).
+workdifference(P) :- P = (MAX - MIN), maxworkload(MAX), minworkload(MIN).
+#minimize{D, Caseid, Refereeid : workdifference(D), assign(Caseid,Refereeid), referee(Refereeid, Refereetype, Max_workload, Prev_workload, Prev_payment), case(Caseid, Casetype, Effort, Damage, Postc, Payment)}.
+
+%Referees should handle cases with higher preference
+#maximize{Casepreference + Regionpreference, Refereeid: assign(Caseid, Refereeid),referee(Refereeid, Refereetype, Max_workload, Prev_workload, Prev_payment), case(Caseid, Casetype, Effort, Damage, Postc, Payment), prefRegion(Refereeid, Postc, Regionpreference), prefType(Refereeid, Casetype, Casepreference)}.
+
+
+
+
+#show assign/2.
